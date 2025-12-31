@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Default: No cleartext for external domains -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <!-- Trust system certificates -->
+            <certificates src="system" />
+            <!-- Trust user-added certificates (for debugging) -->
+            <certificates src="user" />
+        </trust-anchors>
+    </base-config>
+
+    <!-- Allow cleartext HTTP for local development servers -->
+    <domain-config cleartextTrafficPermitted="true">
+        <!-- Localhost -->
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">127.0.0.1</domain>
+
+        <!-- Local network ranges -->
+        <domain includeSubdomains="true">192.168.0.0</domain>
+        <domain includeSubdomains="true">192.168.1.0</domain>
+        <domain includeSubdomains="true">192.168.2.0</domain>
+        <domain includeSubdomains="true">10.0.0.0</domain>
+
+        <!-- Tailscale range (100.64.0.0/10) -->
+        <domain includeSubdomains="true">100.64.0.0</domain>
+        <domain includeSubdomains="true">100.75.49.42</domain>
+
+        <!-- Tailscale hostnames -->
+        <domain includeSubdomains="true">ts.net</domain>
+    </domain-config>
+</network-security-config>
