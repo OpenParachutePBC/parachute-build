@@ -4,8 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:http/http.dart' as http;
 import 'package:parachute_build/core/theme/design_tokens.dart';
+import 'package:parachute_build/core/providers/settings_provider.dart';
 import '../models/project.dart';
-import 'project_list_screen.dart';
 import '../../build/screens/build_screen.dart';
 import '../../build/models/build_session.dart';
 

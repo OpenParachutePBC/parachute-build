@@ -4,23 +4,26 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:http/http.dart' as http;
 import 'package:file_picker/file_picker.dart';
 import 'package:parachute_build/core/theme/design_tokens.dart';
+import 'package:parachute_build/core/providers/settings_provider.dart';
+import 'package:parachute_build/core/widgets/connection_status_banner.dart';
+import '../../settings/screens/settings_screen.dart';
 import '../models/project.dart';
 import 'project_detail_screen.dart';
-
-/// Provider for the build service URL
-final buildServiceUrlProvider = StateProvider<String>((ref) => 'http://localhost:3333');
 
 /// Provider for fetching projects from the API (uses generic /api/ls endpoint)
 final projectsProvider = FutureProvider<List<Project>>((ref) async {
   final baseUrl = ref.watch(buildServiceUrlProvider);
+  final url = '$baseUrl/api/ls?path=Build/repos';
 
   try {
+    debugPrint('[ProjectsProvider] Fetching from: $url');
     final response = await http.get(
-      Uri.parse('$baseUrl/api/ls?path=Build/repos'),
+      Uri.parse(url),
       headers: {'Content-Type': 'application/json'},
     ).timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
+      debugPrint('[ProjectsProvider] Error: ${response.statusCode} - ${response.body}');
       throw Exception('Failed to load projects: ${response.statusCode}');
     }
 
@@ -33,7 +36,9 @@ final projectsProvider = FutureProvider<List<Project>>((ref) async {
         .map((json) => Project.fromJson(json as Map<String, dynamic>))
         .toList();
   } catch (e) {
-    throw Exception('Could not connect to server: $e');
+    debugPrint('[ProjectsProvider] Exception: $e');
+    debugPrint('[ProjectsProvider] BaseURL was: $baseUrl');
+    throw Exception('Could not connect to server at $baseUrl: $e');
   }
 });
 
@@ -46,26 +51,54 @@ class ProjectListScreen extends ConsumerWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final projectsAsync = ref.watch(projectsProvider);
+    final serverUrl = ref.watch(buildServiceUrlProvider);
+    final healthAsync = ref.watch(serverHealthProvider(serverUrl));
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Build'),
+        title: const Text('Parachute Build'),
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_outlined),
-            onPressed: () => _showSettings(context, ref),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (context) => const SettingsScreen(),
+              ),
+            ),
           ),
         ],
       ),
-      body: projectsAsync.when(
-        data: (projects) {
-          if (projects.isEmpty) {
-            return _buildEmptyState(context, isDark);
-          }
-          return _buildProjectList(context, projects, isDark);
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, stack) => _buildErrorState(context, error, isDark, ref),
+      body: Column(
+        children: [
+          // Connection Status Banner
+          healthAsync.when(
+            data: (health) => ConnectionStatusBanner(
+              status: health,
+              onRetry: () => ref.invalidate(serverHealthProvider(serverUrl)),
+              onSettings: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (context) => const SettingsScreen(),
+                ),
+              ),
+            ),
+            loading: () => const SizedBox.shrink(),
+            error: (error, stack) => const SizedBox.shrink(),
+          ),
+
+          // Main Content
+          Expanded(
+            child: projectsAsync.when(
+              data: (projects) {
+                if (projects.isEmpty) {
+                  return _buildEmptyState(context, isDark);
+                }
+                return _buildProjectList(context, projects, isDark);
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (error, stack) => _buildErrorState(context, error, isDark, ref, serverUrl),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _addProject(context, ref),
@@ -111,7 +144,7 @@ class ProjectListScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildErrorState(BuildContext context, Object error, bool isDark, WidgetRef ref) {
+  Widget _buildErrorState(BuildContext context, Object error, bool isDark, WidgetRef ref, String serverUrl) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(Spacing.xl),
@@ -141,10 +174,44 @@ class ProjectListScreen extends ConsumerWidget {
               ),
               textAlign: TextAlign.center,
             ),
+            const SizedBox(height: Spacing.sm),
+            Container(
+              padding: const EdgeInsets.all(Spacing.md),
+              decoration: BoxDecoration(
+                color: isDark
+                    ? BrandColors.nightSurfaceElevated
+                    : BrandColors.stone.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(Radii.sm),
+              ),
+              child: Text(
+                'Server: $serverUrl',
+                style: TextStyle(
+                  fontSize: TypographyTokens.bodySmall,
+                  fontFamily: 'monospace',
+                  color: isDark ? BrandColors.nightTextSecondary : BrandColors.driftwood,
+                ),
+              ),
+            ),
             const SizedBox(height: Spacing.lg),
-            ElevatedButton(
-              onPressed: () => ref.invalidate(projectsProvider),
-              child: const Text('Retry'),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () => ref.invalidate(projectsProvider),
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Retry'),
+                ),
+                const SizedBox(width: Spacing.md),
+                OutlinedButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsScreen(),
+                    ),
+                  ),
+                  icon: const Icon(Icons.settings),
+                  label: const Text('Settings'),
+                ),
+              ],
             ),
           ],
         ),
@@ -237,38 +304,6 @@ class ProjectListScreen extends ConsumerWidget {
     }
   }
 
-  void _showSettings(BuildContext context, WidgetRef ref) {
-    final controller = TextEditingController(
-      text: ref.read(buildServiceUrlProvider),
-    );
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Settings'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Server URL',
-            hintText: 'http://localhost:3333',
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              ref.read(buildServiceUrlProvider.notifier).state = controller.text;
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Card displaying a project

@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:uuid/uuid.dart';
 import 'package:parachute_build/core/theme/design_tokens.dart';
+import 'package:parachute_build/core/providers/settings_provider.dart';
 import '../../projects/models/project.dart';
-import '../../projects/screens/project_list_screen.dart';
 import '../models/chat_message.dart';
 import '../models/stream_event.dart';
 import '../services/build_service.dart';
@@ -257,18 +257,6 @@ class _BuildScreenState extends ConsumerState<BuildScreen> {
             ),
           ],
         ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.add),
-            tooltip: 'New session',
-            onPressed: () {
-              setState(() {
-                _messages.clear();
-                _currentSessionId = null;
-              });
-            },
-          ),
-        ],
       ),
       body: Column(
         children: [
